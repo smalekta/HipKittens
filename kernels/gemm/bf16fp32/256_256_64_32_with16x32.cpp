@@ -2,13 +2,16 @@
 #include "pyutils/pyutils.cuh"
 using namespace kittens;
 
-constexpr int BLOCK_SIZE       = 256;  
-constexpr int HALF_BLOCK_SIZE  = BLOCK_SIZE / 2;
+//constexpr int BLOCK_SIZE       = 256;
+constexpr int BLOCK_SIZE_M       = 256;
+constexpr int BLOCK_SIZE_N       = 128;
+constexpr int HALF_BLOCK_SIZE_M  = BLOCK_SIZE_M / 2;
+constexpr int HALF_BLOCK_SIZE_N  = BLOCK_SIZE_N / 2;
 constexpr int K_STEP           = 64;
 constexpr int WARPS_M          = 2;
 constexpr int WARPS_N          = 4;
-constexpr int REG_BLOCK_M      = BLOCK_SIZE / WARPS_M;
-constexpr int REG_BLOCK_N      = BLOCK_SIZE / WARPS_N;
+constexpr int REG_BLOCK_M      = BLOCK_SIZE_M / WARPS_M;
+constexpr int REG_BLOCK_N      = BLOCK_SIZE_N / WARPS_N;
 constexpr int HALF_REG_BLOCK_M = REG_BLOCK_M / 2;
 constexpr int HALF_REG_BLOCK_N = REG_BLOCK_N / 2;
 constexpr int DOT_SLICE        = 32;
@@ -30,7 +33,7 @@ struct micro_globals {
     int M = a.rows();
     int N = c.cols();
     int K = a.cols();
-    dim3 grid()  { return dim3((N / BLOCK_SIZE) * (M / BLOCK_SIZE)); } 
+    dim3 grid()  { return dim3((N / BLOCK_SIZE_N) * (M / BLOCK_SIZE_M)); }
     dim3 block() { return dim3(NUM_THREADS); } 
     size_t dynamic_shared_memory() { return MAX_SHARED_MEMORY; } 
 };
@@ -39,8 +42,8 @@ __global__ __launch_bounds__(NUM_THREADS, 2)
 void micro_tk(const micro_globals g, int M, int N, int K) {
     extern __shared__ alignment_dummy __shm[];
     shared_allocator al((int*)&__shm[0]);
-    using ST_A = st_bf<HALF_BLOCK_SIZE, K_STEP, st_16x32_s>;
-    using ST_B = st_bf<HALF_BLOCK_SIZE, K_STEP, st_16x32_s>;
+    using ST_A = st_bf<HALF_BLOCK_SIZE_M, K_STEP, st_16x32_s>;
+    using ST_B = st_bf<HALF_BLOCK_SIZE_N, K_STEP, st_16x32_s>;
     ST_A (&As)[2][2] = al.allocate<ST_A, 2, 2>();
     ST_B (&Bs)[2][2] = al.allocate<ST_B, 2, 2>();
 
@@ -60,8 +63,8 @@ void micro_tk(const micro_globals g, int M, int N, int K) {
     // Swizzle chiplet so that wgids are in the same XCD.
     wgid = chiplet_transform_chunked(wgid, NUM_WGS, NUM_XCDS, 64);
     // Swizzle for better L2 within the same XCD.
-    const int num_pid_m = ceil_div(M, BLOCK_SIZE); // 7680 / 192 = 40
-    const int num_pid_n = ceil_div(N, BLOCK_SIZE); // 7680 / 256 = 30
+    const int num_pid_m = ceil_div(M, BLOCK_SIZE_M); // 7680 / 192 = 40
+    const int num_pid_n = ceil_div(N, BLOCK_SIZE_N); // 7680 / 256 = 30
     const int num_wgid_in_group = WGM * num_pid_n;
     int group_id = wgid / num_wgid_in_group;
     int first_pid_m = group_id * WGM;
@@ -88,6 +91,7 @@ void micro_tk(const micro_globals g, int M, int N, int K) {
     i32x4 a_srsrc_base = make_srsrc(a_base, M * a_row_stride, a_row_stride);
     i32x4 b_srsrc_base = make_srsrc(b_base, N * b_row_stride, b_row_stride);
 
+
     const int wid = warpid() % NUM_WARPS;
     constexpr int elem_per_warp = (16 / sizeof(bf16)) * kittens::WARP_THREADS;
     uint32_t a_lds_00 = __builtin_amdgcn_readfirstlane(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&As[0][0].data[0]) + wid * elem_per_warp * sizeof(bf16)));
@@ -107,9 +111,10 @@ void micro_tk(const micro_globals g, int M, int N, int K) {
     using T = typename ST_A::dtype;
     constexpr int bytes_per_thread = ST_A::underlying_subtile_bytes_per_thread;
     constexpr int bytes_per_memcpy = bytes_per_thread * NUM_THREADS;
-    constexpr int memcpy_per_tile = BLOCK_SIZE * K_STEP * sizeof(T) / bytes_per_memcpy;
-    uint32_t swizzled_offsets_A[memcpy_per_tile/2];
-    uint32_t swizzled_offsets_B[memcpy_per_tile/2];
+    constexpr int memcpy_per_tile_m = BLOCK_SIZE_M * K_STEP * sizeof(T) / bytes_per_memcpy;
+    constexpr int memcpy_per_tile_n = BLOCK_SIZE_N * K_STEP * sizeof(T) / bytes_per_memcpy;
+    uint32_t swizzled_offsets_A[memcpy_per_tile_m/2];
+    uint32_t swizzled_offsets_B[memcpy_per_tile_n/2];
     G::prefill_swizzled_offsets(As[0][0], g.a, swizzled_offsets_A);
     G::prefill_swizzled_offsets(Bs[0][0], g.b, swizzled_offsets_B);
 
