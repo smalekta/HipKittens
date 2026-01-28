@@ -22,7 +22,7 @@ def print_title(title, len=30):
     print(title)
     print("-"*len)
 
-def bench_gemm(gemm_params, gemm_func, transpose_B=False, num_warmup=500, num_iter=500, l2_cache_size_mb=256, mall_size_mb=512):
+def bench_gemm(gemm_params, gemm_func, flush=None, transpose_B=False, num_warmup=500, num_iter=500, l2_cache_size_mb=256, mall_size_mb=512):
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     m, n, k = gemm_params["shape"]
@@ -72,6 +72,8 @@ def bench_gemm(gemm_params, gemm_func, transpose_B=False, num_warmup=500, num_it
         torch.cuda.synchronize()
         start_event.record()
         gemm_func(A, B, C)
+        if flush:
+            flush(A,B,C)
         end_event.record()
         torch.cuda.synchronize()
         elapsed_time += start_event.elapsed_time(end_event)

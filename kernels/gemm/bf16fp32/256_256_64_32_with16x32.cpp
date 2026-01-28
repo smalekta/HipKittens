@@ -4,7 +4,7 @@ using namespace kittens;
 
 //constexpr int BLOCK_SIZE       = 256;
 constexpr int BLOCK_SIZE_M       = 256;
-constexpr int BLOCK_SIZE_N       = 128;
+constexpr int BLOCK_SIZE_N       = 256;
 constexpr int HALF_BLOCK_SIZE_M  = BLOCK_SIZE_M / 2;
 constexpr int HALF_BLOCK_SIZE_N  = BLOCK_SIZE_N / 2;
 constexpr int K_STEP           = 64;
@@ -337,8 +337,39 @@ void dispatch_micro(micro_globals g) {
     micro_tk<<<g.grid(), g.block(), mem_size, g.stream>>>(g, g.M, g.N, g.K);
 }
 
+
+__global__ void flush_icache() {  
+    asm __volatile__("s_icache_inv \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t"
+                     "s_nop 0 \n\t" ::
+                         :);
+}
+
+void dispatch_flush_icache(micro_globals g){
+    hipDeviceProp_t deviceProps;
+    hipGetDeviceProperties(&deviceProps, 0);
+    int32_t gpu_block3 = deviceProps.multiProcessorCount * 60;
+    flush_icache<<<dim3(gpu_block3), dim3(64), 0, g.stream>>>();
+}
+
 PYBIND11_MODULE(tk_kernel, m) {
     m.doc() = "tk_kernel python module";
     // py::bind_kernel<micro_tk>(m, "micro_tk", &micro_globals::a, &micro_globals::b, &micro_globals::c); 
     py::bind_function<dispatch_micro>(m, "dispatch_micro", &micro_globals::a, &micro_globals::b, &micro_globals::c);
+
+    py::bind_function<dispatch_flush_icache>(m, "dispatch_flush_icache", &micro_globals::a, &micro_globals::b, &micro_globals::c);
 }

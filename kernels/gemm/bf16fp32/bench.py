@@ -25,7 +25,7 @@ if __name__ == "__main__":
     print_title("HipKittens bf16 GEMM")
     for shape in bench_shapes:
         gemm_params["shape"] = shape
-        bench_gemm(gemm_params, tk_kernel.dispatch_micro, True)
+        bench_gemm(gemm_params, tk_kernel.dispatch_micro, tk_kernel.dispatch_flush_icache)
 
     if BENCHMARK_TORCH:
         print_title("PyTorch bf16 GEMM")
