@@ -2,7 +2,8 @@
 GPU_TARGET=CDNA4
 
 TARGET=tk_kernel
-SRC=256_256_64_32_with16x32.cpp
+# SRC=256_256_64_32_with16x32.cpp
+SRC=128_128_64_32_with16x32.cpp
 
 # HIP variables
 ROCM_INSTALL_DIR := $(ROCM_PATH)
@@ -12,11 +13,11 @@ HIPCXX ?= /opt/rocm/bin/hipcc
 
 # Compiler flags based on GPU target
 ifeq ($(GPU_TARGET),CDNA2)
-HIPFLAGS+= -DKITTENS_CDNA2 --offload-arch=gfx90a
+HIPFLAGS+= -DKITTENS_CDNA2 --offload-arch=gfx90a -save-temps
 else ifeq ($(GPU_TARGET),CDNA3)
-HIPFLAGS+= -DKITTENS_CDNA3 --offload-arch=gfx942
+HIPFLAGS+= -DKITTENS_CDNA3 --offload-arch=gfx942 -save-temps
 else ifeq ($(GPU_TARGET),CDNA4)
-HIPFLAGS+= -DKITTENS_CDNA4 --offload-arch=gfx950
+HIPFLAGS+= -DKITTENS_CDNA4 --offload-arch=gfx950 -save-temps
 endif
 
 # Common variables and flags
